@@ -29,7 +29,7 @@ TON_SDK_AVAILABLE = False
 try:
     from tonsdk.provider import ToncenterClient
     from tonsdk.utils import to_nano, from_nano, Address
-    from tonsdk.contract.wallet import WalletV4R2
+    from tonsdk.contract.wallet import Wallets
     from tonsdk.boc import Cell
     TON_SDK_AVAILABLE = True
 except ImportError as e:
@@ -123,7 +123,16 @@ class TONBatchTransfer:
                 base_url="https://toncenter.com/api/v2/",
                 api_key=None
             )
-            self.wallet = WalletV4R2(provider=self.client, mnemonics=self.seed_phrase)
+            # Використання Wallets замість WalletV4R2
+            from tonsdk.contract.wallet import Wallets, WalletVersionEnum
+            _mn, pub_k, priv_k, wallet = Wallets.from_mnemonics(
+                self.seed_phrase,
+                WalletVersionEnum.v4r2,
+                0
+            )
+            wallet.provider = self.client
+            self.wallet = wallet
+
             address = self.wallet.address.to_string(True, True, True)
             self.print_success("Гаманець готовий!")
             self.print_info(f"Адреса: {address}")
