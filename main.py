@@ -30,7 +30,8 @@ TON_SDK_AVAILABLE = False
 try:
     from tonsdk.provider import ToncenterClient
     from tonsdk.utils import to_nano, from_nano, Address
-    from tonsdk.contract.wallet import WalletVersionEnum, Wallets
+    from tonsdk.contract.wallet import Wallet, WalletVersionEnum
+    from tonsdk.crypto import mnemonic_new, mnemonic_to_wallet_key
     from tonsdk.boc import Cell
     TON_SDK_AVAILABLE = True
 except ImportError as e:
@@ -111,27 +112,27 @@ class TONBatchTransfer:
         return True
         
     def setup_wallet(self):
-    """Налаштування гаманця"""
+        """Налаштування гаманця"""
         self.print_header("НАЛАШТУВАННЯ ГАМАНЦЯ")
-    
+        
         if self.demo_mode:
             self.print_warning("Демо-режим: імітація налаштування гаманця")
             self.seed_phrase = ["demo"] * 24
             return True
-    
-    # Вибір способу введення seed фрази
+        
+        # Вибір способу введення seed фрази
         self.print_colored("Оберіть спосіб введення seed фрази:", Fore.YELLOW)
         print("1. Ввести вручну в консолі")
         print("2. Зчитати з файлу")
-    
+        
         choice = input(f"Ваш вибір (1 або 2): ").strip()
-    
+        
         if choice == "1":
-        # Введення seed фрази вручну
+            # Введення seed фрази вручну
             seed_input = input("Введіть вашу seed фразу (24 слова через пробіл): ").strip()
             self.seed_phrase = seed_input.split()
         elif choice == "2":
-        # Зчитування з файлу
+            # Зчитування з файлу
             seed_file = input("Введіть назву файлу з seed фразою: ").strip()
             try:
                 with open(seed_file, 'r', encoding='utf-8') as f:
@@ -143,33 +144,23 @@ class TONBatchTransfer:
         else:
             self.print_error("Невірний вибір!")
             return False
-    
+        
         if len(self.seed_phrase) != 24:
             self.print_error(f"Seed фраза повинна містити 24 слова! Знайдено: {len(self.seed_phrase)}")
             return False
-        
-    # Ініціалізація клієнта TON
+            
+        # Ініціалізація клієнта TON
         try:
             self.client = ToncenterClient(
                 base_url="https://toncenter.com/api/v2/",
                 api_key=None  # Можна додати API ключ для кращої продуктивності
-        )
-        
-        # Створення гаманця - ВИПРАВЛЕНА ЧАСТИНА
-            from tonsdk.contract.wallet import Wallet
-            from tonsdk.crypto import mnemonic_new, mnemonic_to_wallet_key
-        
-        # Перевірка чи seed фраза валідна
-            if not all(isinstance(word, str) for word in self.seed_phrase):
-                raise ValueError("Невірний формат seed фрази")
+            )
             
-        # Генерація ключів з мнемонічної фрази
+            # Створення гаманця - ВИПРАВЛЕНА ЧАСТИНА
             private_key, public_key = mnemonic_to_wallet_key(self.seed_phrase)
-        
-        # Вибір версії гаманця (v4r2 - рекомендована)
             self.wallet = Wallet(version='v4r2', public_key=public_key, private_key=private_key)
-        
-        # Отримання адреси гаманця
+            
+            # Отримання адреси гаманця
             wallet_address = self.wallet.address.to_string(True, True, True)
             self.print_success("Гаманець успішно ініціалізовано!")
             self.print_info(f"Адреса гаманця: {wallet_address}")
@@ -337,16 +328,26 @@ class TONBatchTransfer:
             
         try:
             # Створення тіла транзакції
-            transfers = [{
-                'address': Address(to_address),
-                'amount': to_nano(amount),
-                'payload': 'Batch transfer'
-            }]
+            body = Cell()
+            body.bits.write_uint(0, 32)  # op code для простого переказу
+            body.bits.write_string("Batch transfer")  # коментар
             
             # Відправлення через гаманець
-            result = await self.wallet.transfer(transfers)
+            query = self.wallet.create_transfer_message(
+                to_addr=Address(to_address),
+                amount=to_nano(amount),
+                payload=body,
+                state_init=None,
+                send_mode=3
+            )
             
-            return result
+            # Відправка транзакції
+            result = await self.client.raw_send_message(query['message'].to_boc(False))
+            
+            return {
+                "hash": result['result'],
+                "success": True
+            }
         except Exception as e:
             raise Exception(f"Помилка відправлення: {e}")
             
@@ -368,18 +369,9 @@ class TONBatchTransfer:
                 # Відправлення транзакції
                 result = await self.send_transaction(address, amount_per_address)
                 
-                if result:
+                if result and result.get('success'):
                     self.print_success(f"Переказ на {address}: {amount_per_address} TON")
-                    
-                    # Виведення хешу транзакції
-                    if isinstance(result, dict):
-                        if 'hash' in result:
-                            self.print_info(f"   Хеш: {result['hash']}")
-                        elif 'tx_hash' in result:
-                            self.print_info(f"   Хеш: {result['tx_hash']}")
-                    elif hasattr(result, 'hash'):
-                        self.print_info(f"   Хеш: {result.hash}")
-                    
+                    self.print_info(f"   Хеш: {result.get('hash')}")
                     successful_transfers += 1
                     total_sent += amount_per_address
                 else:
