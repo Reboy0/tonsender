@@ -30,7 +30,7 @@ TON_SDK_AVAILABLE = False
 try:
     from tonsdk.provider import ToncenterClient
     from tonsdk.utils import to_nano, from_nano, Address
-    from tonsdk.contract.wallet import Wallet, WalletVersionEnum
+    from tonsdk.contract.wallet import Wallets, WalletVersionEnum
     from tonsdk.crypto import mnemonic_new, mnemonic_to_wallet_key
     from tonsdk.boc import Cell
     TON_SDK_AVAILABLE = True
