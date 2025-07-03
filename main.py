@@ -111,27 +111,27 @@ class TONBatchTransfer:
         return True
         
     def setup_wallet(self):
-        """Налаштування гаманця"""
+    """Налаштування гаманця"""
         self.print_header("НАЛАШТУВАННЯ ГАМАНЦЯ")
-        
+    
         if self.demo_mode:
             self.print_warning("Демо-режим: імітація налаштування гаманця")
             self.seed_phrase = ["demo"] * 24
             return True
-        
-        # Вибір способу введення seed фрази
+    
+    # Вибір способу введення seed фрази
         self.print_colored("Оберіть спосіб введення seed фрази:", Fore.YELLOW)
         print("1. Ввести вручну в консолі")
         print("2. Зчитати з файлу")
-        
+    
         choice = input(f"Ваш вибір (1 або 2): ").strip()
-        
+    
         if choice == "1":
-            # Введення seed фрази вручну
+        # Введення seed фрази вручну
             seed_input = input("Введіть вашу seed фразу (24 слова через пробіл): ").strip()
             self.seed_phrase = seed_input.split()
         elif choice == "2":
-            # Зчитування з файлу
+        # Зчитування з файлу
             seed_file = input("Введіть назву файлу з seed фразою: ").strip()
             try:
                 with open(seed_file, 'r', encoding='utf-8') as f:
@@ -143,26 +143,33 @@ class TONBatchTransfer:
         else:
             self.print_error("Невірний вибір!")
             return False
-        
+    
         if len(self.seed_phrase) != 24:
             self.print_error(f"Seed фраза повинна містити 24 слова! Знайдено: {len(self.seed_phrase)}")
             return False
-            
-        # Ініціалізація клієнта TON
+        
+    # Ініціалізація клієнта TON
         try:
             self.client = ToncenterClient(
                 base_url="https://toncenter.com/api/v2/",
                 api_key=None  # Можна додати API ключ для кращої продуктивності
-            )
+        )
+        
+        # Створення гаманця - ВИПРАВЛЕНА ЧАСТИНА
+            from tonsdk.contract.wallet import Wallet
+            from tonsdk.crypto import mnemonic_new, mnemonic_to_wallet_key
+        
+        # Перевірка чи seed фраза валідна
+            if not all(isinstance(word, str) for word in self.seed_phrase):
+                raise ValueError("Невірний формат seed фрази")
             
-            # Створення гаманця
-            self.wallet = Wallets(
-                provider=self.client,
-                mnemonics=self.seed_phrase,
-                version=WalletVersionEnum.v4r2
-            )
-            
-            # Отримання адреси гаманця
+        # Генерація ключів з мнемонічної фрази
+            private_key, public_key = mnemonic_to_wallet_key(self.seed_phrase)
+        
+        # Вибір версії гаманця (v4r2 - рекомендована)
+            self.wallet = Wallet(version='v4r2', public_key=public_key, private_key=private_key)
+        
+        # Отримання адреси гаманця
             wallet_address = self.wallet.address.to_string(True, True, True)
             self.print_success("Гаманець успішно ініціалізовано!")
             self.print_info(f"Адреса гаманця: {wallet_address}")
